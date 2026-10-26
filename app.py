@@ -1,31 +1,58 @@
 # i don't know what i'm doing
 import psutil
 import curses
-import time
-import math
-import human_readable as hr
 from curses import wrapper
 
+from datetime import datetime
+import time
+import math
+import humanize
+
 def byteConvert(bytes):
-    return hr.file_size(bytes)
+    return humanize.naturalsize(bytes, True)
 
 # vars
 active = True
+warnLevel = 95
+lineNum = 0
+bootTime = psutil.boot_time()
 
 def getData(dataType, disk=None):
+    warning = False
     match dataType:
         case "cpu":
             cpuPercent = psutil.cpu_percent(interval=None)
-            return f"CPU avg: {str(cpuPercent)}%"
+            if cpuPercent >= warnLevel:
+                warning = True
+            return f"CPU avg: {str(cpuPercent)}%", warning
         case "memory":
             memDetails = psutil.virtual_memory()
-            return f"RAM usage: {memDetails.percent}% ({byteConvert(memDetails.available)}/{byteConvert(memDetails.total)})"
+            if memDetails.percent >= warnLevel:
+                warning = True
+            return f"RAM usage: {memDetails.percent}% ({byteConvert(memDetails.available)}/{byteConvert(memDetails.total)})", warning
         case "disks":
             usage = psutil.disk_usage(disk.mountpoint)
-            return (f"Usage on {disk.mountpoint}: {usage.percent}% ({byteConvert(usage.free)} free) ({byteConvert(usage.used)}/{byteConvert(usage.total)})")
+            if usage.percent >= warnLevel:
+                warning = True
+            return (f"Usage on {disk.mountpoint}: {usage.percent}% ({byteConvert(usage.free)} free) ({byteConvert(usage.used)}/{byteConvert(usage.total)})", warning)
+        case "uptime":
+            dtNow = datetime.now()
+            dtUptime = datetime.fromtimestamp(bootTime)
+            remainder = dtNow - dtUptime
+            return f"Uptime: {humanize.precisedelta(remainder)} ago"
 
+def addString(window, data, warning, x=2):
+    global lineNum
+    if warning:
+        window.addstr(lineNum, x, data, curses.color_pair(1))
+    else:
+        window.addstr(lineNum, x, data)
+    lineNum += 1
 
 def main(stdscr):
+    global lineNum
+    # first initialization 
+    curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_RED)
     stdscr.nodelay(True)
     stdscr.clear()
     # two windows horizontal.
@@ -42,8 +69,7 @@ def main(stdscr):
         horizSpace,
         4,
         horizSpace + 4
-    )
-
+    ) 
 
     while active:
         try:
@@ -70,17 +96,21 @@ def main(stdscr):
         lineNum = 2
 
         # Get CPU stats
-        windowOne.addstr(lineNum, 2, getData("cpu"))
-        lineNum += 1
+        cpu, warning = getData("cpu") 
+        addString(windowOne, cpu, warning)
 
-        # Get memory info
-        windowOne.addstr(lineNum, 2, getData("memory"))
-        lineNum += 1
+        # Get CPU stats
+        mem, warning = getData("memory") 
+        addString(windowOne, mem, warning)
+
+        # Get uptime 
+        uptime = getData("uptime") 
+        addString(windowOne, uptime, False)
 
         # Get how many drives are in system, move accordingly
         for i in psutil.disk_partitions(all=False):
-            windowOne.addstr(lineNum, 2, getData("disks", i))
-            lineNum += 1
+            diskData, warning = getData("disks", i)
+            addString(windowOne, diskData, warning)
 
         time.sleep(1)
     

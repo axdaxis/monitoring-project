@@ -1,1 +1,4 @@
+human-readable==2.0.3
+humanize==4.16.0
 psutil==7.2.2
+windows-curses==2.4.2
